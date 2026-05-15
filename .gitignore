@@ -1,0 +1,43 @@
+# ============================================
+# SleepWell AI — .gitignore
+# ============================================
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+dist/
+build/
+*.egg
+
+# --- Virtual Environment ---
+venv/
+env/
+.venv/
+
+# --- Jupyter Notebook ---
+.ipynb_checkpoints/
+
+# --- IDE ---
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# --- OS ---
+.DS_Store
+Thumbs.db
+
+# --- Environment Variables (PENTING: jangan push API key!) ---
+.env
+.env.local
+.env.production
+
+# --- TensorBoard Logs (file besar, regenerable) ---
+logs/
+
+# --- Model checkpoint sementara (bukan model final produksi) ---
+best_sleepwell_model.keras

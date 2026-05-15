@@ -8,12 +8,15 @@ import json
 import joblib
 import numpy as np
 
+from dotenv import load_dotenv
+load_dotenv()
+
 try:
-    import openai
-    OPENAI_AVAILABLE = True
+    from groq import Groq
+    GROQ_AVAILABLE = True
 except ImportError:
-    openai = None
-    OPENAI_AVAILABLE = False
+    Groq = None
+    GROQ_AVAILABLE = False
 
 from tensorflow import keras
 
@@ -21,20 +24,134 @@ MODEL_DIR = Path('sleepwell_models')
 METADATA_PATH = MODEL_DIR / 'metadata.json'
 
 class SleepInput(BaseModel):
-    sleep_duration: float = Field(..., description='durasi tidur dalam jam')
-    sleep_efficiency: float = Field(..., ge=0.0, le=1.0, description='efisiensi tidur 0-1')
-    TotalSteps: float = Field(..., description='jumlah langkah hari ini')
-    VeryActiveMinutes: float = Field(..., description='menit aktivitas intens')
-    stress_level: float = Field(..., description='level stres 1-10')
-    sleep_quality: float = Field(..., description='kualitas tidur 1-10')
-    BMI_category: str = Field(..., description='Normal atau Overweight')
-    sleep_disorder: str = Field(..., description='None, Insomnia, Sleep Apnea')
-    model_type: Optional[str] = Field('rf', description='rf, xgb, atau tf')
+    """Data input tidur dan aktivitas harian pengguna untuk prediksi."""
+    sleep_duration: float = Field(
+        ..., ge=0.0, le=24.0,
+        description='Durasi tidur dalam jam (contoh: 7.5)',
+        json_schema_extra={'examples': [7.5]}
+    )
+    sleep_efficiency: float = Field(
+        ..., ge=0.0, le=1.0,
+        description='Efisiensi tidur (0.0 - 1.0). Rasio waktu tidur nyata vs waktu di kasur (contoh: 0.88)',
+        json_schema_extra={'examples': [0.88]}
+    )
+    TotalSteps: float = Field(
+        ..., ge=0.0,
+        description='Jumlah langkah total hari ini dari fitness tracker (contoh: 8500)',
+        json_schema_extra={'examples': [8500]}
+    )
+    VeryActiveMinutes: float = Field(
+        ..., ge=0.0,
+        description='Menit aktivitas fisik intens hari ini (contoh: 25)',
+        json_schema_extra={'examples': [25]}
+    )
+    stress_level: float = Field(
+        ..., ge=1.0, le=10.0,
+        description='Level stres subjektif (1 = sangat rendah, 10 = sangat tinggi)',
+        json_schema_extra={'examples': [5]}
+    )
+    sleep_quality: float = Field(
+        ..., ge=1.0, le=10.0,
+        description='Kualitas tidur subjektif (1 = sangat buruk, 10 = sangat baik)',
+        json_schema_extra={'examples': [7]}
+    )
+    BMI_category: str = Field(
+        ...,
+        description='Kategori BMI pengguna. Pilihan: "Normal" atau "Overweight"',
+        json_schema_extra={'examples': ['Normal']}
+    )
+    sleep_disorder: str = Field(
+        ...,
+        description='Gangguan tidur yang didiagnosis. Pilihan: "None", "Insomnia", atau "Sleep Apnea"',
+        json_schema_extra={'examples': ['None']}
+    )
+    model_type: Optional[str] = Field(
+        'rf',
+        description='Jenis model ML untuk prediksi. Pilihan: "rf" (Random Forest), "xgb" (XGBoost), atau "tf" (TensorFlow Deep Learning)',
+        json_schema_extra={'examples': ['rf']}
+    )
+
+    model_config = {
+        'json_schema_extra': {
+            'examples': [{
+                'sleep_duration': 7.5,
+                'sleep_efficiency': 0.88,
+                'TotalSteps': 8500,
+                'VeryActiveMinutes': 25,
+                'stress_level': 5,
+                'sleep_quality': 7,
+                'BMI_category': 'Normal',
+                'sleep_disorder': 'None',
+                'model_type': 'rf'
+            }]
+        }
+    }
 
 class TipRequest(BaseModel):
-    prompt: Optional[str] = Field(None, description='Prompt tambahan untuk Generative AI')
+    """Request body untuk mendapatkan tips tidur dari Generative AI."""
+    prompt: Optional[str] = Field(
+        None,
+        description='Pertanyaan atau konteks spesifik tentang masalah tidur Anda. Kosongkan untuk tips umum.',
+        json_schema_extra={'examples': ['Saya sering terbangun jam 3 pagi']}
+    )
 
-app = FastAPI(title='SleepWell AI API', version='1.0')
+    model_config = {
+        'json_schema_extra': {
+            'examples': [
+                {'prompt': 'Saya sering terbangun jam 3 pagi'},
+                {'prompt': 'Tips tidur untuk shift malam'},
+                {'prompt': None}
+            ]
+        }
+    }
+
+tags_metadata = [
+    {
+        'name': 'Health',
+        'description': 'Cek status server dan konektivitas model.'
+    },
+    {
+        'name': 'Prediction',
+        'description': 'Prediksi skor fitness dan wellbeing esok hari berdasarkan data tidur dan aktivitas hari ini.'
+    },
+    {
+        'name': 'Recommendation',
+        'description': 'Prediksi + rekomendasi personalisasi berbasis rule-based dan ML.'
+    },
+    {
+        'name': 'Generative AI',
+        'description': 'Tips tidur cerdas menggunakan **Groq LLM (Llama 3.3 70B)**. '
+                       'Mendukung pertanyaan spesifik dalam Bahasa Indonesia.'
+    }
+]
+
+app = FastAPI(
+    title='SleepWell AI API',
+    version='1.0.0',
+    description=(
+        '## Tentang\n'
+        'SleepWell AI adalah REST API untuk **prediksi kualitas tidur** dan **rekomendasi kesehatan tidur** '
+        'menggunakan Machine Learning (Random Forest, XGBoost, TensorFlow) dan Generative AI (Groq LLM).\n\n'
+        '## Cara Penggunaan\n'
+        '1. **`/predict`** — Kirim data tidur Anda, dapatkan prediksi skor fitness & wellbeing esok hari\n'
+        '2. **`/recommend`** — Sama seperti predict, ditambah rekomendasi personal\n'
+        '3. **`/tips`** — Tanya tips tidur ke AI (powered by Llama 3.3 70B via Groq)\n\n'
+        '## Model yang Tersedia\n'
+        '| Model | Kode | Deskripsi |\n'
+        '|---|---|---|\n'
+        '| Random Forest | `rf` | Model ensemble, cepat dan stabil |\n'
+        '| XGBoost | `xgb` | Gradient boosting, performa tinggi |\n'
+        '| TensorFlow DL | `tf` | Deep Learning dengan Attention Layer |\n'
+    ),
+    openapi_tags=tags_metadata,
+    contact={
+        'name': 'SleepWell AI Team',
+    },
+)
+
+groq_client = None
+if GROQ_AVAILABLE and os.environ.get('GROQ_API_KEY'):
+    groq_client = Groq(api_key=os.environ['GROQ_API_KEY'])
 
 if not MODEL_DIR.exists() or not METADATA_PATH.exists():
     raise FileNotFoundError('sleepwell_models folder atau metadata.json tidak ditemukan. Jalankan export model terlebih dahulu.')
@@ -163,42 +280,102 @@ def generate_recommendations(payload: SleepInput, prediction: dict):
 
 
 def get_sleep_tips(prompt: Optional[str] = None) -> str:
-    base_prompt = 'Berikan rekomendasi tidur yang singkat, praktis, dan ramah.'
+    base_prompt = 'Berikan rekomendasi tidur yang singkat, praktis, dan ramah dalam Bahasa Indonesia.'
     if prompt:
         base_prompt += f' Tambahkan konteks: {prompt}'
 
-    if OPENAI_AVAILABLE and os.environ.get('OPENAI_API_KEY'):
-        openai.api_key = os.environ['OPENAI_API_KEY']
-        response = openai.ChatCompletion.create(
-            model='gpt-4o-mini',
-            messages=[
-                {'role': 'system', 'content': 'Kamu adalah asisten tidur sehat.'},
-                {'role': 'user', 'content': base_prompt}
-            ],
-            temperature=0.8,
-            max_tokens=220
-        )
-        return response.choices[0].message.content.strip()
+    if groq_client is not None:
+        try:
+            response = groq_client.chat.completions.create(
+                model='llama-3.3-70b-versatile',
+                messages=[
+                    {'role': 'system', 'content': 'Kamu adalah asisten kesehatan tidur profesional bernama SleepWell AI. Berikan saran yang singkat, praktis, berbasis sains, dan ramah dalam Bahasa Indonesia.'},
+                    {'role': 'user', 'content': base_prompt}
+                ],
+                temperature=0.8,
+                max_tokens=300
+            )
+            return response.choices[0].message.content.strip()
+        except Exception as e:
+            return f'Groq API error, menggunakan tips default. Error: {str(e)}'
 
     return (
         'Coba tidur lebih awal 30 menit, matikan layar 1 jam sebelum tidur, dan lakukan relaksasi ringan sebelum tidur.'
     )
 
-@app.get('/health')
+@app.get(
+    '/health',
+    tags=['Health'],
+    summary='Cek Status Server',
+    response_description='Status server dan direktori model'
+)
 def health_check():
-    return {'status': 'healthy', 'model_directory': str(MODEL_DIR)}
+    """Mengecek apakah server berjalan dan model sudah ter-load dengan benar."""
+    return {
+        'status': 'healthy',
+        'model_directory': str(MODEL_DIR),
+        'groq_connected': groq_client is not None
+    }
 
-@app.post('/predict')
+@app.post(
+    '/predict',
+    tags=['Prediction'],
+    summary='Prediksi Skor Esok Hari',
+    response_description='Prediksi fitness_score dan wellbeing untuk esok hari (skala 0-100)'
+)
 def predict(payload: SleepInput):
+    """
+    Memprediksi **fitness_score_next_day** dan **wellbeing_next_day** berdasarkan data tidur hari ini.
+
+    - **fitness_score_next_day**: Skor aktivitas fisik prediksi esok hari (0-100)
+    - **wellbeing_next_day**: Skor kesejahteraan prediksi esok hari (0-100)
+
+    Pilih model via field `model_type`: `rf`, `xgb`, atau `tf`.
+    """
     return predict_model(payload)
 
-@app.post('/recommend')
+@app.post(
+    '/recommend',
+    tags=['Recommendation'],
+    summary='Prediksi + Rekomendasi Personal',
+    response_description='Prediksi skor beserta rekomendasi tidur yang dipersonalisasi'
+)
 def recommend(payload: SleepInput):
-    prediction = predict_model(payload)
-    return {'prediction': prediction, 'recommendation': generate_recommendations(payload, prediction)}
+    """
+    Menggabungkan **prediksi ML** dengan **rekomendasi rule-based** yang dipersonalisasi.
 
-@app.post('/tips')
+    Response mencakup:
+    - `prediction`: Skor fitness & wellbeing
+    - `recommendation`: Level kondisi (🟢🟡🔴), ringkasan, dan daftar saran spesifik
+
+    Rekomendasi disesuaikan berdasarkan: durasi tidur, efisiensi, stres, langkah, dan gangguan tidur.
+    """
+    prediction = predict_model(payload)
+    return {
+        'prediction': prediction,
+        'recommendation': generate_recommendations(payload, prediction)
+    }
+
+@app.post(
+    '/tips',
+    tags=['Generative AI'],
+    summary='Tips Tidur dari AI',
+    response_description='Tips tidur yang dihasilkan oleh Groq LLM (Llama 3.3 70B)'
+)
 def tips(request: TipRequest):
+    """
+    Menghasilkan **tips tidur cerdas** menggunakan Generative AI (Groq — Llama 3.3 70B).
+
+    - Kirim `prompt` kosong (`null`) untuk mendapatkan tips tidur umum
+    - Kirim `prompt` berisi pertanyaan spesifik untuk saran yang lebih personal
+
+    **Contoh prompt:**
+    - *"Saya susah tidur setelah minum kopi sore"*
+    - *"Tips tidur untuk ibu hamil"*
+    - *"Bagaimana cara mengatasi jet lag?"*
+
+    > Jika Groq API tidak tersedia, akan menggunakan tips default (statis).
+    """
     return {'tip': get_sleep_tips(request.prompt)}
 
 if __name__ == '__main__':
