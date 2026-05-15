@@ -1,0 +1,37 @@
+{
+  "features_num": [
+    "sleep_duration",
+    "sleep_efficiency",
+    "TotalSteps",
+    "VeryActiveMinutes",
+    "stress_level",
+    "sleep_quality"
+  ],
+  "features_cat": [
+    "BMI_category",
+    "sleep_disorder"
+  ],
+  "all_features": [
+    "sleep_duration",
+    "sleep_efficiency",
+    "TotalSteps",
+    "VeryActiveMinutes",
+    "stress_level",
+    "sleep_quality",
+    "BMI_category",
+    "sleep_disorder"
+  ],
+  "targets": [
+    "fitness_score_next_day",
+    "wellbeing_next_day"
+  ],
+  "bmi_classes": [
+    "Normal",
+    "Overweight"
+  ],
+  "disorder_classes": [
+    "Insomnia",
+    "None",
+    "Sleep Apnea"
+  ]
+}
