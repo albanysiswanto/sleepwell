@@ -1,41 +1,53 @@
-# Dashboard-Capstone-Project
-
 # Dashboard Analisis Aktivitas Fisik dan Pola Tidur
 
-Dashboard ini dibuat untuk menganalisis hubungan antara aktivitas fisik, tingkat stres, kategori BMI, durasi tidur, kualitas tidur, dan gangguan tidur pengguna. Dashboard ini menggunakan data aktivitas dan pola tidur pengguna selama April 2016.
+Visualisasi interaktif untuk mengeksplorasi hubungan antara aktivitas fisik, tingkat stres, kategori BMI, durasi tidur, kualitas tidur, dan gangguan tidur. Data yang digunakan berasal dari pengukuran pengguna pada periode April 2016.
 
-## Setup Environment - Anaconda
+## Fitur Utama
+
+- Visualisasi hubungan aktivitas fisik dengan durasi dan kualitas tidur
+- Analisis korelasi antara tingkat stres dan pola tidur
+- Segmentasi berdasarkan kategori BMI
+- Filter interaktif untuk rentang tanggal, intensitas aktivitas, dan kualitas tidur
+- Ringkasan statistik dan insight yang mudah dipahami
+
+## Persyaratan
+
+- Python 3.9 atau lebih baru
+- Disarankan menggunakan lingkungan terisolasi (Conda/venv)
+- Dependensi tercantum di `requirements.txt`
+
+## Instalasi (Conda)
 
 ```bash
-conda create --name sleep-dashboard python=3.9
+conda create --name sleep-dashboard python=3.9 -y
 conda activate sleep-dashboard
-pip install -r requirements.txt# Dashboard-Capstone-Project
+pip install -r requirements.txt
+```
 
-# Dashboard Analisis Aktivitas Fisik dan Pola Tidur
-
-Dashboard ini dibuat untuk menganalisis hubungan antara aktivitas fisik, tingkat stres, kategori BMI, durasi tidur, kualitas tidur, dan gangguan tidur pengguna. Dashboard ini menggunakan data aktivitas dan pola tidur pengguna selama April 2016.
-
-## Setup Environment - Anaconda
+Jika tidak menggunakan Conda, buat virtualenv dan instal dependensi:
 
 ```bash
-conda create --name sleep-dashboard python=3.9
-conda activate sleep-dashboard
+python -m venv .venv
+.venv\Scripts\activate  # Windows
 pip install -r requirements.txt
+```
 
-mkdir dashboard-capstone-project
-cd dashboard-capstone-project
-pip install -r requirements.txt
+## Menjalankan Dashboard
 
+```bash
 streamlit run dashboard-capstone-project.py
+```
 
-## Dataset Mentah
+Halaman akan terbuka otomatis di browser pada `http://localhost:8501` atau alamat yang ditampilkan di terminal.
 
-Dataset mentah yang digunakan dalam proyek ini terdiri dari:
+## Dataset
+
+Proyek ini menggunakan beberapa sumber data Fitabase dan dataset kesehatan tidur:
 
 - Fitabase Data 3.12.16-4.11.16
 - Fitabase Data 4.12.16-5.12.16
 - Sleep_health_and_lifestyle_dataset.csv
 
-Karena ukuran dataset mentah cukup besar, dataset tidak diunggah langsung ke GitHub. Dataset mentah dapat diakses melalui Google Drive berikut:
+Catatan: Karena ukuran file mentah relatif besar, dataset sumber tidak disertakan langsung di repositori. Anda bisa mengunduh data mentah dari Google Drive proyek (akses sesuai kebijakan privasi) dan tempatkan file di folder `data/` sebelum menjalankan aplikasi.
 
-https://drive.google.com/drive/folders/13R3Ih25d4v0kRuajC71Qe-AcyqayYA2g?usp=sharing 
+Google Drive: https://drive.google.com/drive/folders/13R3Ih25d4v0kRuajC71Qe-AcyqayYA2g?usp=sharing
