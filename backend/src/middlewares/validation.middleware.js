@@ -8,6 +8,8 @@ const registerSchema = Joi.object({
   email: Joi.string().email().required(),
   password: Joi.string().min(6).required(),
   age: Joi.number().integer().min(1).max(120).optional(),
+  weight: Joi.number().min(20).max(300).optional(),
+  occupation: Joi.string().max(100).optional().allow(''),
   gender: Joi.string().valid('male', 'female', 'other').optional(),
 });
 
@@ -47,8 +49,10 @@ const predictSchema = Joi.object({
   very_active_minutes: Joi.number().integer().min(0).optional().default(0),
   sedentary_minutes: Joi.number().integer().min(0).optional().default(0),
   bmi_category: Joi.string().valid('Underweight', 'Normal', 'Overweight', 'Obese').optional().default('Normal'),
+  sleep_disorder: Joi.string().optional(),
   heart_rate: Joi.number().min(20).max(300).optional(),
   sleep_log_id: Joi.string().optional(),
+  model_type: Joi.string().optional(),
 });
 
 /**

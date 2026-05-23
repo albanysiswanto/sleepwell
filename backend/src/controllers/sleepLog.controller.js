@@ -1,107 +1,92 @@
 'use strict';
 
 const { v4: uuidv4 } = require('uuid');
-const db = require('../database/db');
+const supabase = require('../database/db');
 const { createError } = require('../middlewares/error.middleware');
 
 // ── Create Sleep Log ──────────────────────────────────────────
-const createLog = (req, res, next) => {
+const createLog = async (req, res, next) => {
   try {
     const {
-      log_date,
-      sleep_duration,
-      sleep_quality,
-      stress_level,
-      physical_activity,
-      total_steps = 0,
-      calories_burned = 0,
-      very_active_minutes = 0,
-      sedentary_minutes = 0,
-      bmi_category = 'Normal',
-      sleep_disorder = 'None',
-      heart_rate,
-      notes,
+      log_date, sleep_duration, sleep_quality, stress_level,
+      physical_activity, total_steps = 0, calories_burned = 0,
+      very_active_minutes = 0, sedentary_minutes = 0,
+      bmi_category = 'Normal', sleep_disorder = 'None',
+      heart_rate, notes,
     } = req.body;
 
     const id = uuidv4();
+    const { data, error } = await supabase.from('sleep_logs').insert({
+      id, user_id: req.user.id, log_date,
+      sleep_duration, sleep_quality, stress_level, physical_activity,
+      total_steps, calories_burned, very_active_minutes, sedentary_minutes,
+      bmi_category, sleep_disorder,
+      heart_rate: heart_rate || null,
+      notes: notes || null,
+    }).select().single();
 
-    db.prepare(`
-      INSERT INTO sleep_logs (
-        id, user_id, log_date, sleep_duration, sleep_quality, stress_level,
-        physical_activity, total_steps, calories_burned, very_active_minutes,
-        sedentary_minutes, bmi_category, sleep_disorder, heart_rate, notes
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      id, req.user.id, log_date, sleep_duration, sleep_quality, stress_level,
-      physical_activity, total_steps, calories_burned, very_active_minutes,
-      sedentary_minutes, bmi_category, sleep_disorder, heart_rate || null, notes || null
-    );
-
-    const created = db.prepare('SELECT * FROM sleep_logs WHERE id = ?').get(id);
+    if (error) throw new Error(error.message);
 
     return res.status(201).json({
       status: 'success',
       message: 'Log tidur berhasil disimpan.',
-      data: { sleep_log: created },
+      data: { sleep_log: data },
     });
-  } catch (err) {
-    next(err);
-  }
+  } catch (err) { next(err); }
 };
 
 // ── Get All Logs (paginated) ──────────────────────────────────
-const getLogs = (req, res, next) => {
+const getLogs = async (req, res, next) => {
   try {
-    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const page  = Math.max(1, parseInt(req.query.page) || 1);
     const limit = Math.min(100, parseInt(req.query.limit) || 10);
-    const offset = (page - 1) * limit;
+    const from  = (page - 1) * limit;
+    const to    = from + limit - 1;
 
-    const { from, to } = req.query;
-    let where = 'user_id = ?';
-    const params = [req.user.id];
+    let query = supabase
+      .from('sleep_logs')
+      .select('*', { count: 'exact' })
+      .eq('user_id', req.user.id)
+      .order('log_date', { ascending: false })
+      .range(from, to);
 
-    if (from) { where += ' AND log_date >= ?'; params.push(from); }
-    if (to)   { where += ' AND log_date <= ?'; params.push(to); }
+    if (req.query.from) query = query.gte('log_date', req.query.from);
+    if (req.query.to)   query = query.lte('log_date', req.query.to);
 
-    const total = db.prepare(`SELECT COUNT(*) as count FROM sleep_logs WHERE ${where}`).get(...params).count;
-    const logs  = db.prepare(`SELECT * FROM sleep_logs WHERE ${where} ORDER BY log_date DESC LIMIT ? OFFSET ?`)
-                    .all(...params, limit, offset);
+    const { data: logs, count, error } = await query;
+    if (error) throw new Error(error.message);
 
     return res.json({
       status: 'success',
       data: {
         sleep_logs: logs,
-        pagination: { page, limit, total, total_pages: Math.ceil(total / limit) },
+        pagination: { page, limit, total: count, total_pages: Math.ceil(count / limit) },
       },
     });
-  } catch (err) {
-    next(err);
-  }
+  } catch (err) { next(err); }
 };
 
 // ── Get Single Log ────────────────────────────────────────────
-const getLog = (req, res, next) => {
+const getLog = async (req, res, next) => {
   try {
-    const log = db
-      .prepare('SELECT * FROM sleep_logs WHERE id = ? AND user_id = ?')
-      .get(req.params.id, req.user.id);
+    const { data: log, error } = await supabase
+      .from('sleep_logs')
+      .select('*')
+      .eq('id', req.params.id)
+      .eq('user_id', req.user.id)
+      .maybeSingle();
 
-    if (!log) return next(createError('Log tidur tidak ditemukan.', 404));
-
+    if (!log || error) return next(createError('Log tidur tidak ditemukan.', 404));
     return res.json({ status: 'success', data: { sleep_log: log } });
-  } catch (err) {
-    next(err);
-  }
+  } catch (err) { next(err); }
 };
 
 // ── Update Log ────────────────────────────────────────────────
-const updateLog = (req, res, next) => {
+const updateLog = async (req, res, next) => {
   try {
-    const log = db
-      .prepare('SELECT id FROM sleep_logs WHERE id = ? AND user_id = ?')
-      .get(req.params.id, req.user.id);
-
-    if (!log) return next(createError('Log tidur tidak ditemukan.', 404));
+    const { data: existing } = await supabase
+      .from('sleep_logs').select('id').eq('id', req.params.id).eq('user_id', req.user.id).maybeSingle();
+    if (!existing) return next(createError('Log tidur tidak ditemukan.', 404));
 
     const {
       log_date, sleep_duration, sleep_quality, stress_level,
@@ -110,93 +95,83 @@ const updateLog = (req, res, next) => {
       sleep_disorder, heart_rate, notes,
     } = req.body;
 
-    db.prepare(`
-      UPDATE sleep_logs SET
-        log_date = ?, sleep_duration = ?, sleep_quality = ?, stress_level = ?,
-        physical_activity = ?, total_steps = ?, calories_burned = ?,
-        very_active_minutes = ?, sedentary_minutes = ?, bmi_category = ?,
-        sleep_disorder = ?, heart_rate = ?, notes = ?
-      WHERE id = ?
-    `).run(
-      log_date, sleep_duration, sleep_quality, stress_level,
-      physical_activity, total_steps ?? 0, calories_burned ?? 0,
-      very_active_minutes ?? 0, sedentary_minutes ?? 0,
-      bmi_category ?? 'Normal', sleep_disorder ?? 'None',
-      heart_rate ?? null, notes ?? null,
-      req.params.id
-    );
+    const { data, error } = await supabase
+      .from('sleep_logs')
+      .update({
+        log_date, sleep_duration, sleep_quality, stress_level, physical_activity,
+        total_steps: total_steps ?? 0, calories_burned: calories_burned ?? 0,
+        very_active_minutes: very_active_minutes ?? 0, sedentary_minutes: sedentary_minutes ?? 0,
+        bmi_category: bmi_category ?? 'Normal', sleep_disorder: sleep_disorder ?? 'None',
+        heart_rate: heart_rate ?? null, notes: notes ?? null,
+      })
+      .eq('id', req.params.id)
+      .select().single();
 
-    const updated = db.prepare('SELECT * FROM sleep_logs WHERE id = ?').get(req.params.id);
-    return res.json({ status: 'success', message: 'Log tidur berhasil diperbarui.', data: { sleep_log: updated } });
-  } catch (err) {
-    next(err);
-  }
+    if (error) throw new Error(error.message);
+    return res.json({ status: 'success', message: 'Log tidur berhasil diperbarui.', data: { sleep_log: data } });
+  } catch (err) { next(err); }
 };
 
 // ── Delete Log ────────────────────────────────────────────────
-const deleteLog = (req, res, next) => {
+const deleteLog = async (req, res, next) => {
   try {
-    const info = db
-      .prepare('DELETE FROM sleep_logs WHERE id = ? AND user_id = ?')
-      .run(req.params.id, req.user.id);
+    const { error, count } = await supabase
+      .from('sleep_logs')
+      .delete({ count: 'exact' })
+      .eq('id', req.params.id)
+      .eq('user_id', req.user.id);
 
-    if (info.changes === 0) return next(createError('Log tidur tidak ditemukan.', 404));
-
+    if (error || count === 0) return next(createError('Log tidur tidak ditemukan.', 404));
     return res.json({ status: 'success', message: 'Log tidur berhasil dihapus.' });
-  } catch (err) {
-    next(err);
-  }
+  } catch (err) { next(err); }
 };
 
 // ── Summary / Statistics ──────────────────────────────────────
-const getSummary = (req, res, next) => {
+const getSummary = async (req, res, next) => {
   try {
-    const { days = 30 } = req.query;
-    const userId = req.user.id;
+    const days = parseInt(req.query.days) || 30;
+    const since = new Date();
+    since.setDate(since.getDate() - days);
+    const sinceStr = since.toISOString().split('T')[0];
 
-    const stats = db.prepare(`
-      SELECT
-        COUNT(*)                        AS total_logs,
-        ROUND(AVG(sleep_duration), 2)   AS avg_sleep_duration,
-        ROUND(AVG(sleep_quality), 2)    AS avg_sleep_quality,
-        ROUND(AVG(stress_level), 2)     AS avg_stress_level,
-        ROUND(AVG(physical_activity), 2) AS avg_physical_activity,
-        ROUND(AVG(total_steps), 0)      AS avg_total_steps,
-        MIN(sleep_duration)             AS min_sleep_duration,
-        MAX(sleep_duration)             AS max_sleep_duration
-      FROM sleep_logs
-      WHERE user_id = ?
-        AND log_date >= date('now', ? || ' days')
-    `).get(userId, `-${days}`);
+    const { data: logs, error } = await supabase
+      .from('sleep_logs')
+      .select('*')
+      .eq('user_id', req.user.id)
+      .gte('log_date', sinceStr)
+      .order('log_date', { ascending: true });
 
-    const disorder_distribution = db.prepare(`
-      SELECT sleep_disorder, COUNT(*) AS count
-      FROM sleep_logs
-      WHERE user_id = ?
-        AND log_date >= date('now', ? || ' days')
-      GROUP BY sleep_disorder
-    `).all(userId, `-${days}`);
+    if (error) throw new Error(error.message);
 
-    const quality_trend = db.prepare(`
-      SELECT log_date, sleep_quality, sleep_duration, stress_level
-      FROM sleep_logs
-      WHERE user_id = ?
-        AND log_date >= date('now', ? || ' days')
-      ORDER BY log_date ASC
-    `).all(userId, `-${days}`);
+    const total = logs.length;
+    const avg = (key) => total ? parseFloat((logs.reduce((s, l) => s + (l[key] || 0), 0) / total).toFixed(2)) : null;
+
+    const stats = {
+      total_logs: total,
+      avg_sleep_duration:     avg('sleep_duration'),
+      avg_sleep_quality:      avg('sleep_quality'),
+      avg_stress_level:       avg('stress_level'),
+      avg_physical_activity:  avg('physical_activity'),
+      avg_total_steps:        avg('total_steps'),
+      min_sleep_duration:     total ? Math.min(...logs.map(l => l.sleep_duration)) : null,
+      max_sleep_duration:     total ? Math.max(...logs.map(l => l.sleep_duration)) : null,
+    };
+
+    // Disorder distribution
+    const disorderMap = {};
+    logs.forEach(l => { disorderMap[l.sleep_disorder] = (disorderMap[l.sleep_disorder] || 0) + 1; });
+    const disorder_distribution = Object.entries(disorderMap).map(([sleep_disorder, count]) => ({ sleep_disorder, count }));
+
+    const quality_trend = logs.map(l => ({
+      log_date: l.log_date, sleep_quality: l.sleep_quality,
+      sleep_duration: l.sleep_duration, stress_level: l.stress_level,
+    }));
 
     return res.json({
       status: 'success',
-      data: {
-        period_days: parseInt(days),
-        stats,
-        disorder_distribution,
-        quality_trend,
-      },
+      data: { period_days: days, stats, disorder_distribution, quality_trend },
     });
-  } catch (err) {
-    next(err);
-  }
+  } catch (err) { next(err); }
 };
 
 module.exports = { createLog, getLogs, getLog, updateLog, deleteLog, getSummary };

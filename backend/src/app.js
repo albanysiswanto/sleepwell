@@ -10,16 +10,28 @@ const { errorHandler } = require('./middlewares/error.middleware');
 const authRoutes       = require('./routes/auth.routes');
 const sleepLogRoutes   = require('./routes/sleepLog.routes');
 const predictionRoutes = require('./routes/prediction.routes');
+const chatRoutes       = require('./routes/chat.routes');
 
 const app = express();
 
 // ── CORS ────────────────────────────────────────────────────
 app.use(cors({
-  origin: [
-    'http://localhost:3000',   // React dev server
-    'http://localhost:5173',   // Vite dev server
-    'http://localhost:8501',   // Streamlit dev server
-  ],
+  origin: (origin, callback) => {
+    // Allow: no origin (curl, Postman), localhost variants, and file:// (frontend opened directly)
+    const allowed = [
+      'http://localhost:3000',
+      'http://localhost:5000',
+      'http://localhost:5173',
+      'http://localhost:5500',
+      'http://127.0.0.1:5500',
+      'http://localhost:8501',
+    ];
+    if (!origin || allowed.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(null, true); // allow all in dev; restrict in prod
+    }
+  },
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true,
@@ -51,6 +63,7 @@ app.get('/health', (_req, res) => {
 app.use('/api/auth',        authRoutes);
 app.use('/api/sleep-logs',  sleepLogRoutes);
 app.use('/api/predictions', predictionRoutes);
+app.use('/api/chat',        chatRoutes);
 
 // ── 404 Handler ─────────────────────────────────────────────
 app.use((_req, res) => {

@@ -1,316 +1,276 @@
 'use strict';
 
+const axios = require('axios');
 const { v4: uuidv4 } = require('uuid');
-const db = require('../database/db');
+const supabase = require('../database/db');
 const { createError } = require('../middlewares/error.middleware');
 
-// ── Rule-based recommendation engine ─────────────────────────
-// (Used as fallback when ML model is not available)
+// ── FastAPI client ────────────────────────────────────────────
+const mlApi = axios.create({
+  baseURL: process.env.ML_API_URL || 'http://localhost:8000',
+  timeout: 10000,
+  headers: { 'Content-Type': 'application/json' },
+});
 
-const FITNESS_WEIGHT = {
-  sleep_duration:    0.30,
-  sleep_quality:     0.25,
-  stress_level:     -0.20,  // negative impact
-  physical_activity: 0.15,
-  total_steps:       0.10,
-};
-
-const WELLBEING_WEIGHT = {
-  sleep_quality:     0.30,
-  sleep_duration:    0.25,
-  stress_level:     -0.25,
-  physical_activity: 0.20,
-};
-
-/**
- * Normalize a value to 0-1 range given min/max.
- */
+// ── Rule-based fallback ───────────────────────────────────────
 const normalize = (val, min, max) => Math.min(1, Math.max(0, (val - min) / (max - min)));
 
-/**
- * Calculate fitness score (0-100) from input features.
- */
 const calcFitnessScore = (input) => {
   const norm = {
     sleep_duration:    normalize(input.sleep_duration, 3, 10),
     sleep_quality:     normalize(input.sleep_quality, 1, 10),
     stress_level:      normalize(input.stress_level, 1, 10),
-    physical_activity: normalize(input.physical_activity, 0, 120),
+    physical_activity: normalize(input.physical_activity || 0, 0, 120),
     total_steps:       normalize(input.total_steps || 0, 0, 20000),
   };
-
-  let score = 50; // base
-  Object.entries(FITNESS_WEIGHT).forEach(([key, weight]) => {
-    score += weight * norm[key] * 50;
-  });
+  let score = 50;
+  score += 0.30 * norm.sleep_duration * 50;
+  score += 0.25 * norm.sleep_quality * 50;
+  score -= 0.20 * norm.stress_level * 50;
+  score += 0.15 * norm.physical_activity * 50;
+  score += 0.10 * norm.total_steps * 50;
   return Math.round(Math.min(100, Math.max(0, score)) * 10) / 10;
 };
 
-/**
- * Calculate wellbeing index (0-100).
- */
 const calcWellbeingIndex = (input) => {
   const norm = {
     sleep_quality:     normalize(input.sleep_quality, 1, 10),
     sleep_duration:    normalize(input.sleep_duration, 3, 10),
     stress_level:      normalize(input.stress_level, 1, 10),
-    physical_activity: normalize(input.physical_activity, 0, 120),
+    physical_activity: normalize(input.physical_activity || 0, 0, 120),
   };
-
   let index = 50;
-  Object.entries(WELLBEING_WEIGHT).forEach(([key, weight]) => {
-    index += weight * norm[key] * 50;
-  });
+  index += 0.30 * norm.sleep_quality * 50;
+  index += 0.25 * norm.sleep_duration * 50;
+  index -= 0.25 * norm.stress_level * 50;
+  index += 0.20 * norm.physical_activity * 50;
   return Math.round(Math.min(100, Math.max(0, index)) * 10) / 10;
 };
 
-/**
- * Determine sleep risk label.
- */
 const getSleepRiskLabel = (input) => {
   if (input.sleep_duration < 5 || input.sleep_quality <= 3) return 'High Risk';
   if (input.sleep_duration < 6.5 || input.sleep_quality <= 5) return 'Moderate Risk';
   return 'Low Risk';
 };
 
-/**
- * Generate rule-based recommendations.
- */
-const generateRecommendations = (input, fitnessScore, wellbeingIndex) => {
+const generateRuleBasedRecs = (input) => {
   const recs = [];
-
-  if (input.sleep_duration < 7) {
-    recs.push({
-      category: 'sleep_duration',
-      priority: 'high',
-      message: 'Durasi tidur Anda kurang dari 7 jam. Kurang tidur dapat menurunkan konsentrasi dan imunitas.',
-      action: 'Coba tidur 30 menit lebih awal malam ini dan pertahankan jadwal tidur yang konsisten.',
-    });
-  } else if (input.sleep_duration > 9) {
-    recs.push({
-      category: 'sleep_duration',
-      priority: 'medium',
-      message: 'Durasi tidur Anda lebih dari 9 jam. Tidur berlebihan bisa berhubungan dengan kelelahan kronis.',
-      action: 'Evaluasi apakah Anda merasa segar saat bangun. Konsultasikan dengan dokter jika berlanjut.',
-    });
-  }
-
-  if (input.sleep_quality <= 4) {
-    recs.push({
-      category: 'sleep_quality',
-      priority: 'high',
-      message: 'Kualitas tidur Anda sangat rendah. Ini dapat mempengaruhi produktivitas dan kesehatan mental.',
-      action: 'Hindari penggunaan layar 1 jam sebelum tidur. Pastikan kamar gelap, sejuk, dan tenang.',
-    });
-  }
-
-  if (input.stress_level >= 7) {
-    recs.push({
-      category: 'stress',
-      priority: 'high',
-      message: 'Tingkat stres Anda sangat tinggi dan berpotensi mengganggu kualitas tidur.',
-      action: 'Coba teknik relaksasi: meditasi 10 menit, pernapasan dalam, atau journaling sebelum tidur.',
-    });
-  } else if (input.stress_level >= 5) {
-    recs.push({
-      category: 'stress',
-      priority: 'medium',
-      message: 'Tingkat stres Anda moderat. Manajemen stres yang baik dapat meningkatkan kualitas tidur.',
-      action: 'Jadwalkan waktu istirahat di siang hari dan kurangi beban pekerjaan mendekati waktu tidur.',
-    });
-  }
-
-  if (input.physical_activity < 30) {
-    recs.push({
-      category: 'physical_activity',
-      priority: input.physical_activity < 10 ? 'high' : 'medium',
-      message: 'Aktivitas fisik Anda masih kurang. Olahraga teratur dapat meningkatkan kualitas tidur secara signifikan.',
-      action: 'Mulai dengan 20-30 menit jalan kaki setiap hari. Hindari olahraga intens 3 jam sebelum tidur.',
-    });
-  }
-
-  if ((input.total_steps || 0) < 5000) {
-    recs.push({
-      category: 'steps',
-      priority: 'low',
-      message: 'Jumlah langkah harian Anda kurang dari 5.000. WHO merekomendasikan minimal 7.000-8.000 langkah/hari.',
-      action: 'Gunakan tangga daripada lift. Berjalan saat istirahat makan siang.',
-    });
-  }
-
-  if (fitnessScore < 40) {
-    recs.push({
-      category: 'overall',
-      priority: 'high',
-      message: 'Skor kebugaran Anda rendah. Diperlukan perbaikan menyeluruh pada pola tidur dan aktivitas.',
-      action: 'Prioritaskan tidur cukup, kurangi stres, dan tambah aktivitas fisik secara bertahap.',
-    });
-  } else if (fitnessScore >= 75) {
-    recs.push({
-      category: 'overall',
-      priority: 'low',
-      message: 'Skor kebugaran Anda baik! Pertahankan kebiasaan positif yang sudah Anda jalani.',
-      action: 'Pantau terus pola tidur Anda dan jaga konsistensinya.',
-    });
-  }
-
+  if (input.sleep_duration < 7) recs.push({ category: 'sleep_duration', priority: 'high', message: 'Durasi tidur Anda kurang dari 7 jam. Kurang tidur menurunkan konsentrasi dan imunitas.', action: 'Coba tidur 30 menit lebih awal dan pertahankan jadwal tidur konsisten.' });
+  else if (input.sleep_duration > 9) recs.push({ category: 'sleep_duration', priority: 'medium', message: 'Durasi tidur lebih dari 9 jam. Tidur berlebihan bisa berhubungan dengan kelelahan.', action: 'Evaluasi apakah Anda merasa segar saat bangun.' });
+  if (input.sleep_quality <= 4) recs.push({ category: 'sleep_quality', priority: 'high', message: 'Kualitas tidur sangat rendah. Ini mempengaruhi produktivitas dan kesehatan mental.', action: 'Hindari layar 1 jam sebelum tidur. Pastikan kamar gelap dan sejuk.' });
+  if (input.stress_level >= 7) recs.push({ category: 'stress', priority: 'high', message: 'Tingkat stres sangat tinggi dan mengganggu kualitas tidur.', action: 'Coba meditasi 10 menit, pernapasan dalam, atau journaling sebelum tidur.' });
+  else if (input.stress_level >= 5) recs.push({ category: 'stress', priority: 'medium', message: 'Stres moderat. Manajemen stres dapat meningkatkan kualitas tidur.', action: 'Jadwalkan istirahat dan kurangi beban kerja mendekati waktu tidur.' });
+  if ((input.physical_activity || 0) < 30) recs.push({ category: 'activity', priority: 'medium', message: 'Aktivitas fisik masih kurang.', action: 'Mulai dengan 20-30 menit jalan kaki setiap hari.' });
+  if ((input.total_steps || 0) < 5000) recs.push({ category: 'steps', priority: 'low', message: 'Kurang dari 5.000 langkah per hari. WHO rekomendasikan 7.000-8.000 langkah.', action: 'Gunakan tangga, berjalan saat istirahat siang.' });
   return recs;
 };
 
-// ── Predict Endpoint ──────────────────────────────────────────
+// ── Map Express input → FastAPI format ───────────────────────
+const toFastApiPayload = (input) => {
+  const bmiMap = { Underweight: 'Normal', Normal: 'Normal', Overweight: 'Overweight', Obese: 'Overweight' };
+  return {
+    sleep_duration:    input.sleep_duration,
+    sleep_efficiency:  parseFloat((input.sleep_efficiency || 0.85).toFixed(2)),
+    TotalSteps:        input.total_steps || 0,
+    VeryActiveMinutes: input.very_active_minutes || 0,
+    stress_level:      input.stress_level,
+    sleep_quality:     input.sleep_quality,
+    BMI_category:      bmiMap[input.bmi_category] || 'Normal',
+    sleep_disorder:    input.sleep_disorder || 'None',
+    model_type:        input.model_type || 'rf',
+  };
+};
+
+// ── Persist to Supabase ───────────────────────────────────────
+const savePrediction = async ({ userId, inputBody, fitnessScore, wellbeingIndex, sleepRiskLabel, source, recs }) => {
+  const predId = uuidv4();
+  const { error: predErr } = await supabase.from('predictions').insert({
+    id: predId,
+    user_id: userId,
+    sleep_log_id: inputBody.sleep_log_id || null,
+    fitness_score: fitnessScore,
+    wellbeing_index: wellbeingIndex,
+    sleep_risk_label: sleepRiskLabel,
+    model_version: source === 'ml_model' ? 'ml-1.0' : 'rule-based-1.0',
+    input_snapshot: inputBody,
+    recommendation: recs,
+  });
+  if (predErr) throw new Error(predErr.message);
+
+  if (recs.length > 0) {
+    const recRows = recs.map((r) => ({
+      id: uuidv4(), user_id: userId, prediction_id: predId,
+      category: r.category, priority: r.priority,
+      message: r.message, action: r.action || '',
+    }));
+    const { error: recErr } = await supabase.from('recommendations').insert(recRows);
+    if (recErr) throw new Error(recErr.message);
+  }
+  return predId;
+};
+
+// ─────────────────────────────────────────────────────────────
+// CONTROLLERS
+// ─────────────────────────────────────────────────────────────
+
+// POST /api/predictions — quick predict
 const predict = async (req, res, next) => {
   try {
     const input = req.body;
     const userId = req.user.id;
-
     let fitnessScore, wellbeingIndex, sleepRiskLabel, source;
 
-    // Try ML API first
-    const ML_API_URL = process.env.ML_API_URL;
     try {
-      const { default: fetch } = await import('node-fetch');
-      const mlRes = await fetch(`${ML_API_URL}/predict`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(input),
-        signal: AbortSignal.timeout(5000),
-      });
-      if (mlRes.ok) {
-        const mlData = await mlRes.json();
-        fitnessScore  = mlData.fitness_score;
-        wellbeingIndex = mlData.wellbeing_index;
-        sleepRiskLabel = mlData.sleep_risk_label;
-        source = 'ml_model';
-      } else {
-        throw new Error('ML API returned non-OK status');
-      }
-    } catch (_mlErr) {
-      // Fallback to rule-based calculation
+      const { data: mlData } = await mlApi.post('/predict', toFastApiPayload(input));
+      fitnessScore   = mlData.fitness_score_next_day;
+      wellbeingIndex = mlData.wellbeing_next_day;
+      source = 'ml_model';
+    } catch (_) {
       fitnessScore   = calcFitnessScore(input);
       wellbeingIndex = calcWellbeingIndex(input);
-      sleepRiskLabel = getSleepRiskLabel(input);
+      source = 'rule_based';
+    }
+    sleepRiskLabel = getSleepRiskLabel(input);
+    const recs = generateRuleBasedRecs(input);
+    const predId = await savePrediction({ userId, inputBody: input, fitnessScore, wellbeingIndex, sleepRiskLabel, source, recs });
+
+    return res.status(201).json({
+      status: 'success',
+      data: { prediction: { id: predId, fitness_score: fitnessScore, wellbeing_index: wellbeingIndex, sleep_risk_label: sleepRiskLabel, source, recommendations: recs } },
+    });
+  } catch (err) { next(err); }
+};
+
+// POST /api/predictions/consult — ML recommend + rule-based
+const consult = async (req, res, next) => {
+  try {
+    const input = req.body;
+    const userId = req.user.id;
+    let fitnessScore, wellbeingIndex, sleepRiskLabel, source;
+    let mlRecs = [], overallLevel = null, summary = null;
+
+    try {
+      const { data: mlData } = await mlApi.post('/recommend', toFastApiPayload(input));
+      fitnessScore   = mlData.recommendation.fitness_score_next_day;
+      wellbeingIndex = mlData.recommendation.wellbeing_next_day;
+      overallLevel   = mlData.recommendation.overall_level;
+      summary        = mlData.recommendation.summary;
+      mlRecs = (mlData.recommendation.recommendations || []).map((m) => ({ category: 'ml', priority: 'high', message: m, action: '' }));
+      source = 'ml_model';
+    } catch (_) {
+      fitnessScore   = calcFitnessScore(input);
+      wellbeingIndex = calcWellbeingIndex(input);
       source = 'rule_based';
     }
 
-    const recommendations = generateRecommendations(input, fitnessScore, wellbeingIndex);
+    sleepRiskLabel = getSleepRiskLabel(input);
+    const ruleRecs = generateRuleBasedRecs(input);
+    const allRecs  = [...mlRecs, ...ruleRecs];
 
-    // Persist prediction
-    const predId = uuidv4();
-    db.prepare(`
-      INSERT INTO predictions (id, user_id, sleep_log_id, fitness_score, wellbeing_index, sleep_risk_label, model_version, input_snapshot, recommendation)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      predId, userId,
-      input.sleep_log_id || null,
-      fitnessScore, wellbeingIndex, sleepRiskLabel,
-      source === 'ml_model' ? 'ml-1.0' : 'rule-based-1.0',
-      JSON.stringify(input),
-      JSON.stringify(recommendations)
-    );
+    if (!overallLevel) {
+      overallLevel = fitnessScore >= 65 ? 'BAIK 🟢' : fitnessScore >= 45 ? 'SEDANG 🟡' : 'PERLU PERHATIAN 🔴';
+    }
+    if (!summary) summary = `Prediksi fitness: ${fitnessScore} | wellbeing: ${wellbeingIndex} untuk esok hari.`;
 
-    // Persist individual recommendations
-    const insertRec = db.prepare(`
-      INSERT INTO recommendations (id, user_id, prediction_id, category, priority, message, action)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `);
-    recommendations.forEach((r) => {
-      insertRec.run(uuidv4(), userId, predId, r.category, r.priority, r.message, r.action);
-    });
+    const predId = await savePrediction({ userId, inputBody: input, fitnessScore, wellbeingIndex, sleepRiskLabel, source, recs: allRecs });
 
     return res.status(201).json({
       status: 'success',
       data: {
-        prediction: {
-          id: predId,
-          fitness_score: fitnessScore,
-          wellbeing_index: wellbeingIndex,
-          sleep_risk_label: sleepRiskLabel,
-          source,
-          recommendations,
-        },
+        prediction: { id: predId, fitness_score: fitnessScore, wellbeing_index: wellbeingIndex, sleep_risk_label: sleepRiskLabel, overall_level: overallLevel, summary, source, recommendations: allRecs },
       },
     });
-  } catch (err) {
-    next(err);
-  }
+  } catch (err) { next(err); }
 };
 
-// ── Get Prediction History ────────────────────────────────────
-const getPredictions = (req, res, next) => {
+// POST /api/predictions/tips — AI tips via FastAPI
+const getTips = async (req, res, next) => {
+  try {
+    const { prompt } = req.body;
+    try {
+      const { data } = await mlApi.post('/tips', { prompt: prompt || null });
+      return res.json({ status: 'success', data: { tip: data.tip } });
+    } catch (_) {
+      return res.json({ status: 'success', data: { tip: 'Coba tidur lebih awal 30 menit, matikan layar 1 jam sebelum tidur, dan lakukan relaksasi ringan.' } });
+    }
+  } catch (err) { next(err); }
+};
+
+// GET /api/predictions — history paginated
+const getPredictions = async (req, res, next) => {
   try {
     const page  = Math.max(1, parseInt(req.query.page) || 1);
     const limit = Math.min(50, parseInt(req.query.limit) || 10);
-    const offset = (page - 1) * limit;
+    const from  = (page - 1) * limit;
+    const to    = from + limit - 1;
 
-    const total = db.prepare('SELECT COUNT(*) AS count FROM predictions WHERE user_id = ?').get(req.user.id).count;
-    const predictions = db.prepare(`
-      SELECT id, sleep_log_id, predicted_at, fitness_score, wellbeing_index, sleep_risk_label, model_version
-      FROM predictions WHERE user_id = ?
-      ORDER BY predicted_at DESC LIMIT ? OFFSET ?
-    `).all(req.user.id, limit, offset);
+    const { data: predictions, count, error } = await supabase
+      .from('predictions')
+      .select('id, sleep_log_id, predicted_at, fitness_score, wellbeing_index, sleep_risk_label, model_version', { count: 'exact' })
+      .eq('user_id', req.user.id)
+      .order('predicted_at', { ascending: false })
+      .range(from, to);
+
+    if (error) throw new Error(error.message);
 
     return res.json({
       status: 'success',
       data: {
         predictions,
-        pagination: { page, limit, total, total_pages: Math.ceil(total / limit) },
+        pagination: { page, limit, total: count, total_pages: Math.ceil(count / limit) },
       },
     });
-  } catch (err) {
-    next(err);
-  }
+  } catch (err) { next(err); }
 };
 
-// ── Get Single Prediction ─────────────────────────────────────
-const getPrediction = (req, res, next) => {
+// GET /api/predictions/:id — single with recommendations
+const getPrediction = async (req, res, next) => {
   try {
-    const pred = db
-      .prepare('SELECT * FROM predictions WHERE id = ? AND user_id = ?')
-      .get(req.params.id, req.user.id);
+    const { data: pred, error } = await supabase
+      .from('predictions')
+      .select('*')
+      .eq('id', req.params.id)
+      .eq('user_id', req.user.id)
+      .maybeSingle();
 
-    if (!pred) return next(createError('Prediksi tidak ditemukan.', 404));
+    if (!pred || error) return next(createError('Prediksi tidak ditemukan.', 404));
 
-    const recommendations = db
-      .prepare('SELECT * FROM recommendations WHERE prediction_id = ? ORDER BY priority DESC')
-      .all(pred.id);
+    const { data: recommendations } = await supabase
+      .from('recommendations')
+      .select('*')
+      .eq('prediction_id', pred.id)
+      .order('priority', { ascending: true });
 
     return res.json({
       status: 'success',
-      data: {
-        prediction: {
-          ...pred,
-          input_snapshot: JSON.parse(pred.input_snapshot || '{}'),
-          recommendations,
-        },
-      },
+      data: { prediction: { ...pred, recommendations: recommendations || [] } },
     });
-  } catch (err) {
-    next(err);
-  }
+  } catch (err) { next(err); }
 };
 
-// ── Get Latest Recommendations ────────────────────────────────
-const getLatestRecommendations = (req, res, next) => {
+// GET /api/predictions/recommendations/latest
+const getLatestRecommendations = async (req, res, next) => {
   try {
-    const latestPred = db
-      .prepare('SELECT id FROM predictions WHERE user_id = ? ORDER BY predicted_at DESC LIMIT 1')
-      .get(req.user.id);
+    const { data: latest } = await supabase
+      .from('predictions')
+      .select('id')
+      .eq('user_id', req.user.id)
+      .order('predicted_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
 
-    if (!latestPred) {
-      return res.json({
-        status: 'success',
-        data: { recommendations: [], message: 'Belum ada prediksi. Lakukan analisis tidur terlebih dahulu.' },
-      });
+    if (!latest) {
+      return res.json({ status: 'success', data: { recommendations: [], message: 'Belum ada prediksi. Lakukan konsultasi terlebih dahulu.' } });
     }
 
-    const recs = db
-      .prepare('SELECT * FROM recommendations WHERE prediction_id = ? ORDER BY priority DESC')
-      .all(latestPred.id);
+    const { data: recs } = await supabase
+      .from('recommendations')
+      .select('*')
+      .eq('prediction_id', latest.id)
+      .order('priority', { ascending: true });
 
-    return res.json({ status: 'success', data: { recommendations: recs } });
-  } catch (err) {
-    next(err);
-  }
+    return res.json({ status: 'success', data: { recommendations: recs || [] } });
+  } catch (err) { next(err); }
 };
 
-module.exports = { predict, getPredictions, getPrediction, getLatestRecommendations };
+module.exports = { predict, consult, getTips, getPredictions, getPrediction, getLatestRecommendations };
