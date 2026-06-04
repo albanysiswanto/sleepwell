@@ -17,6 +17,8 @@ CREATE TABLE IF NOT EXISTS public.users (
   occupation  TEXT,
   gender      TEXT CHECK (gender IN ('male', 'female', 'other')),
   created_at  TIMESTAMPTZ DEFAULT NOW(),
+  updated_at  TIMESTAMPTZ DEFAULT NOW(),
+  created_at  TIMESTAMPTZ DEFAULT NOW(),
   updated_at  TIMESTAMPTZ DEFAULT NOW()
 );
 
