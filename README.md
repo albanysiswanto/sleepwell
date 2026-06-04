@@ -1,16 +1,34 @@
-# React + Vite
+# SleepWell AI - Quick Start
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Aplikasi ini berjalan dengan 3 komponen utama. Gunakan **3 terminal terpisah** di dalam folder `SleepWell\sleepwell` dan jalankan secara **berurutan**.
 
-Currently, two official plugins are available:
+## Persiapan Awal (Wajib)
+1. **Konfigurasi Environment Variables**: Lihat panduan di file `.env.example` yang ada di root project. Buat file `.env` di masing-masing folder (`backend` dan `frontend`).
+2. **Download Model AI**: Anda perlu mengunduh file model AI untuk menjalankan ML API lokal.
+   - Buka link Google Drive berikut: [Download Model AI](https://drive.google.com/drive/folders/1m1ETMAkLkYppTt7-w3VytgYY0kNNOaYn?usp=sharing)
+   - Simpan atau letakkan file model yang diunduh ke dalam folder `final-model-api/sleepwell/` (atau direktori model yang semestinya).
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## 1. Jalankan ML API (Terminal 1)
+```bash
+cd final-model-api\sleepwell
+.\venv\Scripts\activate
+pip install -r requirements.txt   # Opsional jika belum install
+python sleepwell_api.py
+```
+*(Layanan berjalan di port 8000)*
 
-## React Compiler
+## 2. Jalankan Backend (Terminal 2)
+```bash
+cd backend
+npm install   # Opsional jika belum install
+npm run dev
+```
+*(Layanan berjalan di port 5000)*
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+## 3. Jalankan Frontend (Terminal 3)
+```bash
+cd frontend
+npm install   # Opsional jika belum install
+npm run dev
+```
+*(Aplikasi web terbuka di http://localhost:5173)*
