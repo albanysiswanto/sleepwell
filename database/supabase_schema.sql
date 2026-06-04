@@ -16,10 +16,10 @@ CREATE TABLE IF NOT EXISTS public.users (
   weight      REAL CHECK (weight > 0),
   occupation  TEXT,
   gender      TEXT CHECK (gender IN ('male', 'female', 'other')),
-  created_at  TIMESTAMPTZ DEFAULT NOW(),
-  updated_at  TIMESTAMPTZ DEFAULT NOW(),
-  created_at  TIMESTAMPTZ DEFAULT NOW(),
-  updated_at  TIMESTAMPTZ DEFAULT NOW()
+  created_at       TIMESTAMPTZ DEFAULT NOW(),
+  updated_at       TIMESTAMPTZ DEFAULT NOW(),
+  chat_tokens      INTEGER DEFAULT 5,
+  last_token_reset TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- ── Sleep Logs Table ──────────────────────────────────────────
