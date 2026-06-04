@@ -21,7 +21,7 @@ Berikut adalah langkah-langkah ringkas dan wajib untuk menjalankan server backen
    GRANT ALL ON public.recommendations TO service_role;
    ```
 5. Buka menu ⚙️ **Project Settings** -> **API**.
-6. *Copy* **Project URL** dan kunci API **Legacy anon, service_role API keys** yang berlabel **`service_role` `secret`** (kunci panjang yang diawali dengan `eyJ...`).
+6. *Copy* **Project URL** dan kunci API **`Legacy anon, service_role API keys`** yang berlabel **`service_role` `secret`** (kunci panjang yang diawali dengan `eyJ...`).
 
 ## 2. Konfigurasi Environment (`.env`)
 1. Buka folder `backend` di code editor Anda.
