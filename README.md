@@ -10,7 +10,7 @@ Pastikan Anda sudah berhasil menyalakan **Backend API** (port 5000) agar fitur *
 
 > **Catatan Opsional (Hanya jika Anda butuh run ML API di lokal):**
 > Jika Anda memang berniat untuk me-*run* model ML secara mandiri secara luring, Anda diwajibkan untuk mengunduh aset model tambahan (seperti model `.pkl` atau `.keras`) melalui tautan Google Drive di bawah ini dan meletakkannya di folder `final-model-api`. *(Tentu saja, jika Anda me-clone repositori ini dan file modelnya sudah terbawa di dalamnya, Anda **tidak perlu** mengunduhnya lagi).*
-> [Aset Model ML API - Google Drive]([https://drive.google.com/drive/folders/1icqwxsOv1umMAWSlBewvytjr5H69fcpK?usp=sharing](https://drive.google.com/drive/folders/1m1ETMAkLkYppTt7-w3VytgYY0kNNOaYn))
+> [Aset Model ML API - Google Drive](https://drive.google.com/drive/folders/1icqwxsOv1umMAWSlBewvytjr5H69fcpK?usp=sharing](https://drive.google.com/drive/folders/1m1ETMAkLkYppTt7-w3VytgYY0kNNOaYn)
 
 ## 2. Instalasi
 Buka terminal baru, arahkan masuk ke folder `frontend`, lalu install semua modul yang dibutuhkan:
