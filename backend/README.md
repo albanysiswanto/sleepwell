@@ -5,7 +5,7 @@ Berikut adalah langkah-langkah ringkas dan wajib untuk menjalankan server backen
 ## 1. Persiapan Database (Supabase)
 1. Buat akun dan buat *project* baru di [supabase.com](https://supabase.com).
 2. Di Dashboard Supabase, buka menu **SQL Editor** (ikon `</>`).
-3. Buka file **`database/supabase_schema.sql`** (file ini berisi rancangan/struktur seluruh tabel yang dibutuhkan oleh aplikasi SleepWell). *Copy* seluruh isinya, *paste* ke SQL Editor Supabase, lalu klik **Run** untuk mengeksekusinya.
+3. Buka file database/[supabase_schema.sql](https://github.com/albanysiswanto/sleepwell/blob/95ef7fdc4e73b3a07e2a00d3c00f4f2b775eb420/backend/database/supabase_schema.sql) (file ini berisi rancangan/struktur seluruh tabel yang dibutuhkan oleh aplikasi SleepWell). *Copy* seluruh isinya, *paste* ke SQL Editor Supabase, lalu klik **Run** untuk mengeksekusinya.
 4. Untuk mencegah error *Permission Denied*, tambahkan dan jalankan baris ini juga di SQL Editor:
    ```sql
    -- Disable RLS untuk semua tabel SleepWell
@@ -21,7 +21,7 @@ Berikut adalah langkah-langkah ringkas dan wajib untuk menjalankan server backen
    GRANT ALL ON public.recommendations TO service_role;
    ```
 5. Buka menu ⚙️ **Project Settings** -> **API**.
-6. *Copy* **Project URL** dan kunci API yang berlabel **`service_role` `secret`** (kunci panjang yang diawali dengan `eyJ...`).
+6. *Copy* **Project URL** dan kunci API **`Legacy anon, service_role API keys`** yang berlabel **`service_role` `secret`** (kunci panjang yang diawali dengan `eyJ...`).
 
 ## 2. Konfigurasi Environment (`.env`)
 1. Buka folder `backend` di code editor Anda.
